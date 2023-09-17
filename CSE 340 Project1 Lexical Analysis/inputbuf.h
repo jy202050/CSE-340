@@ -1,6 +1,6 @@
 // Title: CSE 340 Project 1 input header file
 // Desc: Adding three requested token types, REALNUM, BASE08NUM, and BASE16NUM (Copyright (C) Rida Bazzi), implemented by JIAYUAN YU, WENQI LIU
-// Date: 09/09/2023
+// Date: 09/17/2023
 
 
 #ifndef __INPUT_BUFFER__H__

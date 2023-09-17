@@ -1,6 +1,6 @@
 // Title: CSE 340 Project 1 inputbuf source code file
 // Desc: Adding three requested token types, REALNUM, BASE08NUM, and BASE16NUM (Copyright (C) Rida Bazzi), implemented by JIAYUAN YU, WENQI LIU
-// Date: 09/09/2023
+// Date: 09/17/2023
 
 #include <iostream>      // For I/O function
 #include <istream>       // For standard input stream operations

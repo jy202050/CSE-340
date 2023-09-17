@@ -1,18 +1,16 @@
-
-
-// Title: CSE 340 Project 1 lexer source code file
+// Title: CSE 340 Project 1 lexer executable file
 // Desc: Adding three requested token types, REALNUM, BASE08NUM, and BASE16NUM (Copyright (C) Rida Bazzi), implemented by JIAYUAN YU, WENQI LIU
-// Date: 09/09/2023
+// Date: 09/17/2023
 
 #include <iostream>
 #include <istream>
 #include <vector>
 #include <string>
-#include <cctype> // For toupper function, it converts a given character to its uppercase equivalent.
+#include <cctype>
 
+#include "inputbuf.cc"
 #include "lexer.h"
 #include "inputbuf.h"
-#include "inputbuf.cc"
 
 using namespace std;
 
@@ -22,30 +20,23 @@ string reserved[] = { "END_OF_FILE",
                       "EQUAL", "COLON", "COMMA", "SEMICOLON",
                       "LBRAC", "RBRAC", "LPAREN", "RPAREN",
                       "NOTEQUAL", "GREATER", "LESS", "LTEQ", "GTEQ",
-                      "DOT", "NUM", "ID", "ERROR",
-                      "REALNUM", "BASE08NUM", "BASE16NUM"// TODO: Add labels for new token types here (as string)
+                      "DOT", "NUM", "ID", "ERROR", "REALNUM", "BASE08NUM", "BASE16NUM"
 };
-
-
-
 
 #define KEYWORDS_COUNT 5
 string keyword[] = { "IF", "WHILE", "DO", "THEN", "PRINT" };
 
-// isdigit is defined in the system
-// Check if the char is a positive digit (1-9)
-bool LexicalAnalyzer::isPdigit(char c){return c >= '1' && c <= '9';}
-// Check if the char is a valid hex digit (0-9, A-F, a-f)
-bool LexicalAnalyzer::isDigit16(char c){return (c >= '0' && c <= '9') || (toupper(c) >= 'A' && toupper(c) <= 'F');}
-// Check if the char is a valid positive hex digit (1-9, A-F, a-f)
-bool LexicalAnalyzer::isPdigit16(char c){return (c >= '1' && c <= '9') || (toupper(c) >= 'A' && toupper(c) <= 'F');}
-// Check if the character is a valid octal digit (0-7)
-bool LexicalAnalyzer::isDigit8(char c) {return c >= '0' && c <= '7';}
-// Check if the character is a valid positive octal digit (1-7)
-bool LexicalAnalyzer::isPdigit8(char c) {return c >= '1' && c <= '7';}
+// Toupper converts a => A or A => a
+bool isPdigit(char c) { return c >= '1' && c <= '9';}
+bool isPdigit8(char c) { return c >= '1' && c <= '7';}
+bool isPdigit16(char c) { c = toupper(c); return (c >= '1' && c <= '9') || (c >= 'A' && c <= 'F');}
+bool isDigit(char c) { return c == '0' || (c >= '1' && c <= '9');}
+bool isDigit8(char c) { return c == '0' || (c >= '1' && c <= '7');}
+bool isDigit16(char c) { c = toupper(c); return c == '0' || ((c >= '1' && c <= '9') || (c >= 'A' && c <= 'F'));}
 
 
 void Token::Print()
+
 {
     cout << "{" << this->lexeme << " , "
          << reserved[(int) this->token_type] << " , "
@@ -90,6 +81,26 @@ bool LexicalAnalyzer::IsKeyword(string s)
     return false;
 }
 
+// Method to verify whether the next series of char in the input matches a specific string that passes as the parameter digit type(ScanTokenType)
+bool LexicalAnalyzer::IsSequenceAlign(string digit)
+{
+    char c;
+
+    for (int i = 0; i < digit.length(); i++) {        // Loop to iterate through each character in the string digit
+        input.GetChar(c);                         // Retrieve char c on each iteration
+        if (input.EndOfInput() || c != digit[i]) {   // Check if the end of input stream has been reached
+            if (!input.EndOfInput()) {       // or the current input does not match the current char c in the string digit
+                input.UngetChar(c);          // Call UngetChar method to putting it back
+            }
+            for (int j = 0; j < i; j++) {      // Unget all the char if there is a mismatch between string digit and input stream
+                input.UngetChar(digit[i-j-1]);
+            }
+            return false;     // Return false if the function couldn't find a matching sequence in the input
+        }
+    }
+    return true;         // Return true if match
+}
+
 TokenType LexicalAnalyzer::FindKeywordIndex(string s)
 {
     for (int i = 0; i < KEYWORDS_COUNT; i++) {
@@ -100,130 +111,269 @@ TokenType LexicalAnalyzer::FindKeywordIndex(string s)
     return ERROR;
 }
 
+// Scan to verify if the token type is NUM or REALNUM or BASE08NUM or BASE16NUM.
+Token LexicalAnalyzer::ScanTokenType()
+{
+        string TokenType;
 
-
-
-Token LexicalAnalyzer::ScanNumber() {
-    char c;
-    c = toupper(c);    // Convert c to uppercase
-
-    input.GetChar(c);  // Get the first char
-
-    // Take 0-9 and A-F as char entry
-    if (isDigit16(c)) {
-        if (c == '0') {            // If the first char is 0, isolated it
-            tmp.lexeme = "0";      // Append 0 to the lexeme
-            tmp.token_type = NUM; // Set default token_type to NUM
-            input.GetChar(c);  // Get next char
-
-            // Check if it is a dot
-            if (!input.EndOfInput() && c == '.') {        // If the next character is a dot
-                tmp.lexeme += '.';                        // Append the . to the lexeme
-                input.GetChar(c);                      // Read the next character after the dot
-                if (isdigit(c)) {                      // Confirm it's a digit after the dot
-                    do {
-                        tmp.lexeme += c;                  // Append the digit to the lexeme
-                        input.GetChar(c);                 // Read next character
-                    } while (!input.EndOfInput() && isdigit(c));
-
-                    if (!input.EndOfInput()) {
-                        input.UngetChar(c);
-                    }
-                    tmp.token_type = REALNUM;             // Set type to REALNUM;
-                } else {
-                    input.UngetChar(c);                  // Unget the current digit
-                    input.UngetChar('.');                  // Unget the current digit
-                    tmp.token_type = NUM;
-                }
-                
-                // Check if it is 'x' for base08num and base16num
-            } else if (!input.EndOfInput() && c == 'x') {
-                tmp.lexeme += c;  //  Append 'x'
-                input.GetChar(c);  // Read next char, check 0
-
-                if (c == '0') {
-                    tmp.lexeme += c;  // Append '0'
-                    input.GetChar(c);  // Read next char, check 8
-                    if (c == '8') {
-                        tmp.lexeme += c;  // Append '8'
-                        tmp.token_type = BASE08NUM;  // Define a BASE08NUM token type
-                    } else {
-                        input.UngetChar(c);  // Unget char if not 8
-                        input.UngetChar('0');  // Also unget the '0'
-                        input.UngetChar('x');  // Also unget the 'x'
-                        tmp.lexeme = "0";  // Reset lexeme to just "0"
-                        tmp.token_type = NUM;  // Set token type to NUM
-                        return tmp;
-                    }
-                } else if (c == '1') {
-                    tmp.lexeme += c;  // Append '1'
-                    input.GetChar(c);  // Read next char, check 6
-                    if (c == '6') {
-                        tmp.lexeme += c;  // Append '6'
-                        tmp.token_type = BASE16NUM;  // Define a BASE16NUM token type
-                    } else {
-                        input.UngetChar(c);  // Unget char if not 6
-                        input.UngetChar('1');  // Also unget the '1'
-                        input.UngetChar('x');  // Also unget the 'x'
-                        tmp.lexeme = "0";  // Reset lexeme to just "0"
-                        tmp.token_type = NUM;  // Set token type to NUM
-                        return tmp;
-                    }
-                } else {
-                    input.UngetChar(c);  // Unget the current char if not 0 or 1
-                    input.UngetChar('x');  // Also unget the 'x'
-                    tmp.lexeme = "0";  // Reset lexeme to just "0"
-                    tmp.token_type = NUM;  // Set token type to NUM
-                }
-                
-            } else {
-                if (!input.EndOfInput()) {
-                    input.UngetChar(c);
-                }
-            }
-            return tmp;
-        }
-
-
-
-
-        // Check if  it starts with 1-9
-    } else if (isPdigit(c)) {
-            tmp.lexeme = "";
-            while (!input.EndOfInput() && isdigit(c)) {
-                tmp.lexeme += c;
-                input.GetChar(c);
-            }
-
-    } else if (c >= 'A' && c <= 'F') {
-
-    } else {
-            if (!input.EndOfInput()) {
-                input.UngetChar(c);
-            }
-            tmp.lexeme = "";
-            tmp.token_type = ERROR;
+        // Recall ScanRNandBASE08Type string method to check if it is NUM token type
+        TokenType = ScanRNandBASE08Type(".",isDigit,isPdigit);
+        if (TokenType.length() > 0)
+        {
+            tmp.lexeme = TokenType;
+            tmp.token_type = REALNUM;
             tmp.line_no = line_no;
             return tmp;
         }
 
+        // Recall ScanRNandBASE08Type string method to check if it is NUM token type
+        TokenType = ScanRNandBASE08Type("x08",isDigit8,isPdigit8);
+        if (TokenType.length() > 0)
+        {
+            tmp.lexeme = TokenType;
+            tmp.token_type = BASE08NUM;
+            tmp.line_no = line_no;
+            return tmp;
+        }
+
+        // Recall ScanBASE16Type string method to check if it is NUM token type
+        TokenType = ScanBASE16Type("x16",isDigit16 ,isPdigit16);
+        if (TokenType.length() > 0)
+        {
+            tmp.lexeme = TokenType;
+            tmp.token_type = BASE16NUM;
+            tmp.line_no = line_no;
+            return tmp;
+        }
+
+        // Recall ScanNumType string method to check if it is NUM token type
+        TokenType = ScanNumType();
+        if (TokenType.length() > 0)
+        {
+            tmp.lexeme = TokenType;
+            tmp.token_type = NUM;
+            tmp.line_no = line_no;
+            return tmp;
+        }
+
+    tmp.lexeme = "";
+    tmp.token_type = ERROR;
+    tmp.line_no = line_no;
+    return tmp;
+}
+
+
+// Method to check if the string is NUM type
+string LexicalAnalyzer::ScanNumType()
+{
+    char c;
+    string NumLexeme = "";        // Initialie the string NumLexeme
+
+    input.GetChar(c);          // Get next char
+    NumLexeme += c;               // Append the first char
+    if (isDigit(c))
+    {
+        // Check if it is digit in range 0 - 9
+        if (c == '0')
+        {
+            return NumLexeme;           // if it is 0, return 0 as a num type(isolate 0)
+        }  else
+              {                         // Else loop to check 1-9
+                input.GetChar(c);    // Read next char
+                // Set while loop to append all the digit 0-9 if start with pdigit 1-9
+                    while (!input.EndOfInput() && isDigit(c))
+                    {
+                        NumLexeme += c;             // Append char to the NumLexeme on each iteration
+                        input.GetChar(c);        // Read next char on each iteration
+                    }
+                        if (!input.EndOfInput())
+                        {  // If the next char is not a digit 1-9 and not the end of input
+                            input.UngetChar(c);     // Call UngetChar method
+                        }
+            return NumLexeme;                       // Return the current lexeme
+              }
+    }
+    // If not satisfy the entry 0-9, Recall UngetString method to unget all char in the NumLexeme
+    input.UngetString(NumLexeme);
+    return "";
+}
+
+
+// Method to check if the string is either RealNum or BASE08NUM type
+string LexicalAnalyzer::ScanRNandBASE08Type(string MatchRNN8String, bool (*DigitType1)(char), bool (*DigitType2)(char))
+{
+        char c;
+        string RNN8Lexeme  = ""; // Initialize the RNN8Lexeme(Realnum and base08)
+        bool ScanDigit;
+
+        input.GetChar(c);  // Read the first char
+        RNN8Lexeme += c;        // Append the first char to RNN8Lexeme
+        // Check if the first char is 0
+        if(c == '0') {
+            // Recall IsSequenceAlign to check the parameter MatchRNN8String if the next set of char in the input match the MatchRNN8String(RNN8Lexeme)
+            if (IsSequenceAlign(MatchRNN8String)) {
+                RNN8Lexeme += MatchRNN8String;  // Append to RNN8Lexeme if MatchRNN8String is found
+                // Check if the MatchRNN8String is a dot(.)
+                if (MatchRNN8String == ".") {
+                    input.GetChar(c);
+                    // Append digit if the current digit is 0 and not end of input
+                    while (!input.EndOfInput() && c == '0') {
+                        RNN8Lexeme += c;              // Append digit
+                        input.GetChar(c);        // Read next char
+                            // Check if a newline character is encountered
+                            if(c== '\n') {
+                                RNN8Lexeme += c;       // Append to the RNN8Lexeme
+                                input.UngetString(RNN8Lexeme);   // Put back into the input
+                                return "";                        // Return empty string
+                            }
+                    }
+                    // Check if the current char satisfies is pdigit
+                    if (!input.EndOfInput() && isPdigit(c))
+                    {
+                        while(!input.EndOfInput() && isDigit(c))   // Append all the digit 0-9
+                        {
+                            RNN8Lexeme += c;                         // Append all char on each iteration
+                            input.GetChar(c);                   // Read next char(each iteration)
+                        }
+                        if (!input.EndOfInput())                   // UngetChar if not in range of 0-9 and not end of the input
+                            input.UngetChar(c);
+                    }
+                }
+                return RNN8Lexeme;      //Return RNN8Lexeme if found
+            }
+        } else if(DigitType2(c)) {
+            input.GetChar(c);  // Read the first char
+            // Append all the digit 0-9 after the first char(1-9)
+            while (!input.EndOfInput() && DigitType1(c)) {
+                RNN8Lexeme += c;
+                input.GetChar(c);
+            }
+            // Call UngetChar method if not in range of 0-9 and not end of input
+            if (!input.EndOfInput()) {
+                input.UngetChar(c);
+            }
+            // Check again if the next char in the input match MatchRNN8String
+            if (IsSequenceAlign(MatchRNN8String)) {
+                RNN8Lexeme += MatchRNN8String;     // Append it to RNN8Lexeme
+                if (MatchRNN8String == ".") {    // Check if the current char is a dot(.)
+
+                    // If it is a dot(.), set ScanDigit to false(hasnt found a valid digit after the dot yet)
+                    ScanDigit = false;
+                    input.GetChar(c);       // Read next char
+
+                    // Append all digit 0-9
+                    while (!input.EndOfInput() && isDigit(c)) {
+                        ScanDigit = true;     // Set ScanPdigit to true and appends the digit character to RNN8Lexeme
+                        RNN8Lexeme += c;
+                        input.GetChar(c);
+                    }
+                    // Unget char if not in range of 0-9
+                    if (!input.EndOfInput())
+                        input.UngetChar(c);
+
+                    // If ScanDigit is true, return the RNN8Lexeme string(RNN8Lexeme)
+                    if (ScanDigit)
+                        return RNN8Lexeme;
+                }
+                // If  not a dot(.), return RNLexeme string
+                else
+                    return RNN8Lexeme;
+            }
+        }
+
+    input.UngetString(RNN8Lexeme);    // Unget the whole string if no valid RNN8Lexeme was found
+    return "";                           // Return empty string
 }
 
 
 
+// Method to check if the string is BASE16NUM type
+string LexicalAnalyzer::ScanBASE16Type(string MatchBASE16String, bool (*DigitType1)(char), bool (*DigitType2)(char))
+{
+    char c;
+    string BASE16Lexeme  = ""; // Initialize the BASE16Lexeme
+    bool ScanDigit16;
 
+    input.GetChar(c);  // Read the first char
+    BASE16Lexeme += c;    // Append the first char to BASE16Lexeme
+    // Check if the first char is 0
+    if(c == '0') {
+        // Recall IsSequenceAlign to check the parameter MatchBASE16String if the next set of char in the input match the MatchBASE16String(BASE16Lexeme)
+        if (IsSequenceAlign(MatchBASE16String)) {
+            BASE16Lexeme += MatchBASE16String;  // Append to BASE16Lexeme if MatchRNString is found
+            // Check if the MatchBASE16String is a 'x'
+            if (MatchBASE16String == "x") {
+                input.GetChar(c);
+                // Append digit if the current digit is 0 and not end of input
+                while (!input.EndOfInput() && c == '0') {
+                    BASE16Lexeme += c;           // Append digit
+                    input.GetChar(c);        // Read next char
+                    // Check if a newline character is encountered
+                    if(c== '\n') {
+                        BASE16Lexeme += c;       // Append to the BASE16Lexeme
+                        input.UngetString(BASE16Lexeme);   // Put back into the input
+                        return "";                             // Return empty string
+                    }
+                }
 
+                // Check if the current char satisfies is pdigit16 1-9 and A-F
+                if (!input.EndOfInput() && isPdigit16(c))
+                {
+                    while(!input.EndOfInput() && isDigit16(c))   // Append all the digit 0-9 and A-F
+                    {
+                        BASE16Lexeme += c;                      // Append all char on each iteration
+                        input.GetChar(c);                   // Read next char(each iteration)
+                    }
+                    if (!input.EndOfInput())                   // UngetChar if not in range of 0-9 or A-F and not end of the input
+                        input.UngetChar(c);
+                }
+            }
+            return BASE16Lexeme;      //Return BASE16Lexeme if found
+        }
+    } else if(DigitType2(c)) {
+        input.GetChar(c);  // Read the first char
 
+        // Append all the digits (0-9 && a-f） after the first char(1-9 && a-f)
+        while (!input.EndOfInput() && DigitType1(c)) {
+            BASE16Lexeme += c;
+            input.GetChar(c);
+        }
+        // Call UngetChar method if not in range of (1-9 && a-f) and not end of input
+        if (!input.EndOfInput()) {
+            input.UngetChar(c);
+        }
+        // Check again if the next char in the input match MatchRNString
+        if (IsSequenceAlign(MatchBASE16String)) {
+            BASE16Lexeme += MatchBASE16String;     // Append it to BASE16Lexeme
+            if (MatchBASE16String == "x") {    // Check if the current char is a 'x'
 
+                // If it is a 'x'', set ScanDigit16 to false(hasnt found a valid digit after the 'x' yet)
+                ScanDigit16 = false;
+                input.GetChar(c);       // Read next char
 
+                // Append all digit 0-9 && a-f
+                while (!input.EndOfInput() && isDigit16(c)) {
+                    ScanDigit16 = true;     // Set ScanDigit16 to true and appends the digit character to BASE16Lexeme
+                    BASE16Lexeme += c;
+                    input.GetChar(c);
+                }
+                // Unget char if not in range of 0-9 && a-f
+                if (!input.EndOfInput())
+                    input.UngetChar(c);
 
+                // If ScanDigit16 is true, return the BASE16NUM string(BASE16Lexeme)
+                if (ScanDigit16)
+                    return BASE16Lexeme;
+            }
+                // If not a 'x'', return BASE16Lexeme string
+            else
+                return BASE16Lexeme;
+        }
+    }
 
-
-
-
-
-
-
+    input.UngetString(BASE16Lexeme);    // Unget the whole string if no valid RNLexeme was found
+    return "";
+}
 
 
 Token LexicalAnalyzer::ScanIdOrKeyword()
@@ -361,15 +511,15 @@ Token LexicalAnalyzer::GetToken()
         default:
             if (isdigit(c)) {
                 input.UngetChar(c);
-                return ScanNumber();
+                return ScanTokenType();
             } else if (isalpha(c)) {
                 input.UngetChar(c);
                 return ScanIdOrKeyword();
             } else if (input.EndOfInput())
                 tmp.token_type = END_OF_FILE;
-            else {
+            else
                 tmp.token_type = ERROR;
-            }
+
             return tmp;
     }
 }
